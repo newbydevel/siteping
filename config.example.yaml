@@ -1,0 +1,27 @@
+# siteping configuration example
+# Copy this file to config.yaml and adjust as needed.
+
+# How often (in seconds) to check each site
+interval_seconds: 60
+
+# Optional: email address to send alerts to (requires SMTP env vars)
+alert_email: "you@example.com"
+
+# Optional: webhook URL to POST alert payloads to
+alert_webhook: "https://hooks.example.com/siteping"
+
+sites:
+  - url: "https://example.com"
+    name: "Example"
+    timeout: 10
+    expected_status: 200
+
+  - url: "https://httpbin.org/status/200"
+    name: "HTTPBin 200"
+    timeout: 5
+    expected_status: 200
+
+  - url: "https://httpbin.org/status/404"
+    name: "HTTPBin 404 (should alert)"
+    timeout: 5
+    expected_status: 200
