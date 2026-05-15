@@ -25,6 +25,14 @@ def test_uptime_percent_all_up():
     assert _uptime_percent(url, h) == 100.0
 
 
+def test_uptime_percent_all_down():
+    h = History()
+    url = "https://example.com"
+    for _ in range(3):
+        h.record(_make_result(url, ok=False))
+    assert _uptime_percent(url, h) == 0.0
+
+
 def test_uptime_percent_mixed():
     h = History()
     url = "https://example.com"
@@ -82,3 +90,16 @@ def test_build_report_shows_uptime_and_avg():
     report = build_report(h)
     assert "100.0%" in report
     assert "0.5s" in report
+
+
+def test_build_report_multiple_urls():
+    h = History()
+    url1 = "https://example.com"
+    url2 = "https://other.com"
+    h.record(_make_result(url1, ok=True))
+    h.record(_make_result(url2, ok=False))
+    report = build_report(h)
+    assert url1 in report
+    assert url2 in report
+    assert "UP" in report
+    assert "DOWN" in report
