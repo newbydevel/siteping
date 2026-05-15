@@ -56,6 +56,17 @@ def test_check_url_connection_error():
     assert result.error is not None
 
 
+@responses.activate
+def test_check_url_custom_expected_status():
+    """Test that a non-200 status code is treated as up when expected."""
+    responses.add(responses.GET, "https://example.com/redirect", status=301)
+    result = check_url("https://example.com/redirect", expected_status=301)
+
+    assert result.is_up is True
+    assert result.status_code == 301
+    assert result.error is None
+
+
 def test_check_result_str_up():
     r = CheckResult(url="https://example.com", status_code=200, response_time_ms=42.5, is_up=True)
     assert "[UP]" in str(r)
