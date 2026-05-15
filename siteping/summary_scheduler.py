@@ -29,6 +29,19 @@ class SummaryScheduler:
             return True
         return (now - self._last_sent) >= self.interval
 
+    def time_until_next(self, now: Optional[datetime] = None) -> timedelta:
+        """Return how long until the next summary is due.
+
+        Returns timedelta(0) if a summary is already due.
+        """
+        if now is None:
+            now = datetime.now(tz=timezone.utc)
+        if self._last_sent is None:
+            return timedelta(0)
+        elapsed = now - self._last_sent
+        remaining = self.interval - elapsed
+        return remaining if remaining > timedelta(0) else timedelta(0)
+
     def maybe_send(self, config: AppConfig, history: History,
                    now: Optional[datetime] = None) -> bool:
         """Send a summary if one is due. Returns True if a summary was sent."""
