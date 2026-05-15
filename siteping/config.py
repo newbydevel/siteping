@@ -1,6 +1,9 @@
-import os
+"""Configuration loading for siteping."""
+
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 import yaml
 
@@ -8,29 +11,31 @@ import yaml
 @dataclass
 class SiteConfig:
     url: str
-    timeout: int = 10
+    interval: int = 60
     expected_status: int = 200
-    name: str = ""
+    timeout: float = 10.0
 
-    def __post_init__(self):
-        if not self.name:
-            self.name = self.url
+    def __post_init__(self) -> None:
+        if self.interval <= 0:
+            raise ValueError(f"interval must be positive, got {self.interval}")
+        if self.timeout <= 0:
+            raise ValueError(f"timeout must be positive, got {self.timeout}")
 
 
 @dataclass
 class AppConfig:
     sites: List[SiteConfig] = field(default_factory=list)
-    interval_seconds: int = 60
-    alert_email: str = ""
-    alert_webhook: str = ""
+    email: Optional[dict] = None
+    webhook: Optional[dict] = None
+    alert_after_failures: int = 1
+    summary_interval: str = ""
+    state_file: str = ".siteping_state.json"
+    retention_days: int = 0  # 0 means no pruning
 
 
-def load_config(path: str = "config.yaml") -> AppConfig:
-    """Load and parse the YAML configuration file."""
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Config file not found: {path}")
-
-    with open(path, "r") as fh:
+def load_config(path: str) -> AppConfig:
+    """Load and validate configuration from a YAML file."""
+    with open(path) as fh:
         raw = yaml.safe_load(fh)
 
     if not isinstance(raw, dict):
@@ -38,17 +43,20 @@ def load_config(path: str = "config.yaml") -> AppConfig:
 
     sites = [
         SiteConfig(
-            url=site["url"],
-            timeout=site.get("timeout", 10),
-            expected_status=site.get("expected_status", 200),
-            name=site.get("name", ""),
+            url=s["url"],
+            interval=s.get("interval", 60),
+            expected_status=s.get("expected_status", 200),
+            timeout=s.get("timeout", 10.0),
         )
-        for site in raw.get("sites", [])
+        for s in raw.get("sites", [])
     ]
 
     return AppConfig(
         sites=sites,
-        interval_seconds=raw.get("interval_seconds", 60),
-        alert_email=raw.get("alert_email", ""),
-        alert_webhook=raw.get("alert_webhook", ""),
+        email=raw.get("email"),
+        webhook=raw.get("webhook"),
+        alert_after_failures=raw.get("alert_after_failures", 1),
+        summary_interval=raw.get("summary_interval", ""),
+        state_file=raw.get("state_file", ".siteping_state.json"),
+        retention_days=raw.get("retention_days", 0),
     )
