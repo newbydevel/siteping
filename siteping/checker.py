@@ -22,6 +22,17 @@ class CheckResult:
         return f"[DOWN] {self.url} — {self.error or self.status_code}"
 
 
+def _build_error_result(url: str, elapsed: float, error: str) -> CheckResult:
+    """Helper to build a CheckResult for a failed check."""
+    return CheckResult(
+        url=url,
+        status_code=None,
+        response_time_ms=elapsed,
+        is_up=False,
+        error=error,
+    )
+
+
 def check_url(
     url: str,
     timeout: int = DEFAULT_TIMEOUT,
@@ -42,19 +53,7 @@ def check_url(
         )
     except requests.exceptions.Timeout:
         elapsed = (time.monotonic() - start) * 1000
-        return CheckResult(
-            url=url,
-            status_code=None,
-            response_time_ms=elapsed,
-            is_up=False,
-            error="timeout",
-        )
+        return _build_error_result(url, elapsed, "timeout")
     except requests.exceptions.RequestException as exc:
         elapsed = (time.monotonic() - start) * 1000
-        return CheckResult(
-            url=url,
-            status_code=None,
-            response_time_ms=elapsed,
-            is_up=False,
-            error=str(exc),
-        )
+        return _build_error_result(url, elapsed, str(exc))
