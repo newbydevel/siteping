@@ -1,62 +1,61 @@
-import time
+"""Scheduler: runs checks on a fixed interval and dispatches alerts."""
+
+from __future__ import annotations
+
 import logging
-from datetime import datetime, timezone
-from typing import Callable
+import time
+from typing import Dict
 
 from siteping.checker import CheckResult, check_url
-from siteping.config import AppConfig, SiteConfig
-from siteping.notifier import notify
+from siteping.config import AppConfig
+from siteping.history import History
+from siteping.notifier import send_email, send_webhook
+from siteping.state import load_state, save_state
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
-def _should_alert(result: CheckResult, previous: dict[str, CheckResult]) -> bool:
-    """Return True if we should send an alert for this result."""
-    url = result.url
-    prev = previous.get(url)
-
-    # Alert on first failure or when status changes from up to down
-    if not result.is_up:
-        if prev is None or prev.is_up:
-            return True
+def _should_alert(url: str, result: CheckResult, prev_state: Dict[str, bool]) -> bool:
+    """Return True when we need to send an alert for this result."""
+    was_up = prev_state.get(url, True)
+    if not result.ok:
+        # alert on first failure OR on continued failure every time
+        return True
+    if result.ok and not was_up:
+        # recovery — alert once
+        return True
     return False
 
 
-def run_checks(
-    config: AppConfig,
-    previous: dict[str, CheckResult],
-    on_result: Callable[[CheckResult], None] | None = None,
-) -> dict[str, CheckResult]:
-    """Run all configured checks and send alerts as needed."""
-    current: dict[str, CheckResult] = {}
-
+def run_checks(config: AppConfig, state: Dict[str, bool], history: History) -> Dict[str, bool]:
+    """Check every configured site, send alerts as needed, update state."""
+    new_state: Dict[str, bool] = {}
     for site in config.sites:
-        result = check_url(site)
-        current[result.url] = result
-        logger.info(str(result))
+        result = check_url(site.url, timeout=site.timeout, expected_status=site.expected_status)
+        history.record(result)
+        log.info("%s", result)
 
-        if on_result:
-            on_result(result)
+        if _should_alert(site.url, result, state):
+            if config.email:
+                send_email(result, config)
+            if config.webhook:
+                send_webhook(result, config)
 
-        if _should_alert(result, previous):
-            logger.warning("Alert triggered for %s", result.url)
-            notify(result, config)
+        new_state[site.url] = result.ok
 
-    return current
+    return new_state
 
 
-def start_loop(config: AppConfig) -> None:
-    """Blocking loop that runs checks on the configured interval."""
-    interval = config.interval_seconds
-    logger.info(
-        "Starting siteping — checking %d site(s) every %ds",
-        len(config.sites),
-        interval,
-    )
-
-    previous: dict[str, CheckResult] = {}
+def start_loop(config: AppConfig, state_path: str = "siteping_state.json",
+               history_path: str = "siteping_history.json") -> None:
+    """Block forever, running checks every config.interval seconds."""
+    history = History()
+    history.load(history_path)
 
     while True:
-        logger.debug("Running checks at %s", datetime.now(timezone.utc).isoformat())
-        previous = run_checks(config, previous)
-        time.sleep(interval)
+        state = load_state(state_path)
+        state = run_checks(config, state, history)
+        save_state(state, state_path)
+        history.save(history_path)
+        log.debug("Sleeping %ds until next check cycle.", config.interval)
+        time.sleep(config.interval)
